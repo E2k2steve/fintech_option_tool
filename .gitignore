@@ -1,0 +1,13 @@
+.venv/
+.DS_Store
+.env
+.env.*
+!.env.example
+__pycache__/
+.pytest_cache/
+*.pyc
+tmp/
+*.aux
+*.log
+*.out
+*.toc

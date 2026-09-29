@@ -1,0 +1,26 @@
+# 默认以 fintech_option_tool 文件夹的内容作为 Git 仓库根目录。
+# 若仓库包含外层目录，请按 README 设置 rootDir。
+services:
+  - type: web
+    name: fintech-option-tool
+    runtime: python
+    plan: free
+    buildCommand: python -m pip install -r requirements.txt
+    # 显式 CLI 端口覆盖 Render 默认 GUNICORN_CMD_ARGS 中的固定端口。
+    startCommand: gunicorn --config gunicorn.conf.py --bind "0.0.0.0:${PORT:-10000}" app:app
+    healthCheckPath: /healthz
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: WEB_CONCURRENCY
+        value: "1"
+      - key: GUNICORN_THREADS
+        value: "2"
+      - key: GUNICORN_TIMEOUT
+        value: "120"
+      - key: OPENBLAS_NUM_THREADS
+        value: "1"
+      - key: OMP_NUM_THREADS
+        value: "1"

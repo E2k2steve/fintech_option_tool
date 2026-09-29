@@ -1,0 +1,9 @@
+{
+  "说明": "网页百分数输入，r=5 表示 5%；模型 Python API 使用小数。quantity 为份数，合约乘数为 1。",
+  "scenarios": [
+    {"name": "默认平值看涨", "S": 100, "K": 100, "T": 1, "r": 5, "sigma": 20, "q": 0, "option_type": "call", "quantity": 100, "n_simulations": 10000},
+    {"name": "平值看跌", "S": 100, "K": 100, "T": 1, "r": 5, "sigma": 20, "q": 0, "option_type": "put", "quantity": 100, "n_simulations": 10000},
+    {"name": "含股息的空头看涨", "S": 105, "K": 100, "T": 0.5, "r": 3, "sigma": 25, "q": 2, "option_type": "call", "quantity": -50, "n_simulations": 50000},
+    {"name": "低波动率边界", "S": 100, "K": 100, "T": 1, "r": 5, "sigma": 5, "q": 0, "option_type": "call", "quantity": 100, "n_simulations": 10000}
+  ]
+}

@@ -1,0 +1,38 @@
+\usepackage[margin=2.25cm,headheight=16pt]{geometry}
+\usepackage{amsmath,amssymb,booktabs,array,tabularx,graphicx,float}
+\usepackage{tikz,pgfplots}
+\usetikzlibrary{arrows.meta,positioning,fit}
+\pgfplotsset{compat=1.18}
+\usepackage{xcolor,listings,enumitem,fancyhdr,hyperref}
+\definecolor{brand}{HTML}{087F70}
+\definecolor{ink}{HTML}{233843}
+\definecolor{soft}{HTML}{F3F6F7}
+\hypersetup{colorlinks=true,linkcolor=brand,urlcolor=brand,citecolor=brand,
+  pdftitle={期权定价与风险管理可视化系统},pdfauthor={金融科技课程项目}}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{brand}OPTION LAB}
+\fancyhead[R]{\small 期权定价与风险管理可视化系统}
+\fancyfoot[C]{\small\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0.2em}
+\setlength{\emergencystretch}{2em}
+\linespread{1.05}
+\setlist{nosep,topsep=4pt,leftmargin=2em}
+\ctexset{section={format=\Large\bfseries\color{ink}},
+  subsection={format=\large\bfseries\color{ink}}}
+\lstset{basicstyle=\small\ttfamily,backgroundcolor=\color{soft},
+  keywordstyle=\color{brand}\bfseries,commentstyle=\color{gray},
+  stringstyle=\color{blue!50!black},breaklines=true,showstringspaces=false,
+  frame=single,rulecolor=\color{black!10},columns=fullflexible,
+  xleftmargin=6pt,xrightmargin=6pt,aboveskip=8pt,belowskip=8pt}
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\pp}{\,\mathrm{pp}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\notebox}[1]{\begin{center}\fcolorbox{brand!25}{soft}{\parbox{0.91\linewidth}{\small #1}}\end{center}}
+\pgfplotsset{every axis/.append style={width=.9\linewidth,height=5.1cm,
+  grid=major,grid style={gray!15},axis line style={gray!40},
+  tick label style={font=\small},label style={font=\small},
+  legend style={font=\small,draw=none},scaled ticks=false}}

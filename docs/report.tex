@@ -1,0 +1,421 @@
+\PassOptionsToClass{fontset=fandol}{ctexart}
+\documentclass[UTF8,a4paper,12pt]{ctexart}
+\input{preamble.tex}
+\input{generated_results/macros.tex}
+\begin{document}
+\begin{center}
+{\small\color{brand}金融科技应用开发课程项目报告}\par\vspace{1cm}
+{\LARGE\bfseries 基于 Black-Scholes 与蒙特卡洛模拟的\\[0.4em]期权定价与风险管理可视化系统}\par\vspace{.65cm}
+{\small Option Pricing and Risk Management Visualization System\\
+Based on Black-Scholes and Monte Carlo Simulation}\par\vspace{.7cm}
+{\large Python / Flask / NumPy / SciPy / Plotly}\par\vspace{.8cm}
+\end{center}
+\section*{摘要}
+期权价值同时受到标的价格、波动率、剩余期限等因素影响，仅凭单一价格难以理解非线性风险。针对金融科技课程中理论推导与程序演示脱节的问题，本文设计并实现一个无需数据库和实时行情的欧式期权定价与风险管理原型。系统采用 Python 与 Flask 组织计算流程，以 NumPy、SciPy 实现含连续股息率的 Black-Scholes 公式、解析 Greeks 及风险中性几何布朗运动的蒙特卡洛模拟，并通过本地 Plotly 图表展示价格分布、敏感性与压力损益。风险模块对标的价格和波动率冲击进行完整重定价，同时提供二维热图和数值矩阵。默认平值看涨期权的解析价格为 \BSPrice，10,000 次模拟得到 \MCPrice，其 95\% 近似置信区间包含解析值。测试覆盖无套利关系、有限差分、模拟统计量、情景一致性和输入错误处理。结果表明，系统能够以一致的单位定义连接定价、统计误差和持仓敞口，适用于课程演示与模型验证。其边界仍受恒定波动率、连续交易和欧式行权等假设约束，不具备真实交易系统所需的市场校准与执行能力。
+
+\noindent\textbf{关键词：}金融科技；欧式期权；Black-Scholes；蒙特卡洛；Greeks；压力测试
+
+\vfill
+\notebox{文档中的实验数字由项目脚本实际计算。源文件、CSV、JSON 和生成的 LaTeX 表格一并提供，可重新运行验证。本系统仅用于课程教学与模型演示，不构成投资建议。}
+\newpage
+\tableofcontents
+\newpage
+
+\section{项目背景与需求分析}
+\subsection{需要解决的金融问题}
+相同执行价格的期权可能因剩余期限或波动率不同而具有不同价值；即使当前价值相近，持仓对市场变化的敏感度也可能不同。因此，教学工具需要同时回答三个问题：给定假设下期权值多少钱，哪些参数驱动这一价值，以及较大市场冲击会带来多少持仓损益。只输出一个公式计算器，无法完整回答后两项问题。
+
+本项目用闭式价格作为基准，用模拟方法呈现风险中性期望的数值估计，再用 Greeks 和压力情景解释风险。金融科技在这里体现为可重复的计算、明确的数据口径和可交互的结果表达。用户修改输入后，所有指标与图表一起更新，避免从多个独立表格复制数据时出现参数不一致。
+
+\subsection{应用范围与验收要求}
+产品定位是桌面浏览器中的课程原型。用户不需要注册，也不需要提供真实账户或行情。模型只计算单一欧式期权及其有符号数量持仓；合约乘数为 1。正数量代表多头，负数量代表空头，总持仓价值和风险敞口均按数量缩放。系统没有期权组合净额、资金账户或实际成交记录。
+
+\begin{table}[H]\centering\small
+\begin{tabularx}{\linewidth}{lX}
+\toprule 需求维度 & 具体实现与验收方式\\\midrule
+金融正确性 & Call / Put 公式、含股息平价关系、Greeks 有限差分检验。\\
+统计可解释性 & 显示样本量、随机种子、标准误和 95\% 近似区间。\\
+风险分析 & 一维与二维情景完整重定价，输出持仓 PnL。\\
+可演示性 & 默认参数打开即算；图表悬停可读数；支持修改与恢复。\\
+异常可处理 & 非法数字、无穷、缺失输入和超限样本量返回中文提示。\\
+可交付性 & 源代码、测试、示例、中文报告和使用说明齐备。\\\bottomrule
+\end{tabularx}\caption{课程原型的功能边界与验收维度}
+\end{table}
+
+\subsection{技术选择与取舍}
+Flask 负责一次输入对应一次完整结果页面；Jinja2 将后端数据转为 HTML。NumPy 批量生成随机变量和计算收益，SciPy 仅提供正态分布函数，定价公式由项目直接实现。Plotly 图形在 Python 中构造，浏览器只负责交互显示。该结构避免引入前后端双工程、数据库或复杂部署工具，便于课程检查与复现。
+
+无实时行情使实验不受市场日期、网络权限或 API 配额影响，但也意味着结果仅对应用户指定的模型世界。离线可运行是安装完成后的运行特性；第一次取得 Python 与第三方依赖仍需要网络或预先准备的安装包。
+\newpage
+
+\section{理论基础}
+\subsection{Black-Scholes 模型与参数意义}
+令 $T$ 表示当前到期日之间的剩余年数，而非绝对日历日期。风险中性测度 $\mathbb Q$ 下，含连续股息收益率的标的价格满足
+\begin{equation}
+\mathrm dS_t=(r-q)S_t\,\mathrm dt+\sigma S_t\,\mathrm dW_t^{\mathbb Q}.
+\end{equation}
+该过程假设对数收益具有正态增量，价格连续且为正。定价用 $r-q$ 而非用户主观预期收益率作为漂移；它服务于无套利估值，并不预测真实市场涨跌。模型推导与股息扩展可参见文献\cite{haugh}。
+
+\begin{table}[H]\centering
+\begin{tabular}{cll}\toprule 符号 & 经济含义 & 程序内部单位\\\midrule
+$S$ & 当前标的资产价格 & 货币单位\\
+$K$ & 执行价格 & 同一货币单位\\
+$T$ & 剩余到期时间 & 年\\
+$r$ & 连续复利无风险利率 & 年化小数\\
+$\sigma$ & 标的收益率波动率 & 年化小数\\
+$q$ & 连续股息收益率 & 年化小数\\\bottomrule
+\end{tabular}\caption{定价参数定义}
+\end{table}
+
+记 $\Phi$ 为标准正态分布函数，$\phi$ 为其密度。定义
+\begin{align}
+d_1&=\frac{\ln(S/K)+(r-q+\frac12\sigma^2)T}{\sigma\sqrt T},\\
+d_2&=d_1-\sigma\sqrt T.
+\end{align}
+欧式看涨和看跌期权的价值分别为
+\begin{align}
+C&=Se^{-qT}\Phi(d_1)-Ke^{-rT}\Phi(d_2),\label{eq:call}\\
+P&=Ke^{-rT}\Phi(-d_2)-Se^{-qT}\Phi(-d_1).\label{eq:put}
+\end{align}
+其中看涨期权在到期时支付 $(S_T-K)^+$，看跌期权支付 $(K-S_T)^+$。程序限制 $S,K,T,\sigma>0$，不通过极小常数替换到期或零波动率输入；这些边界的专门定价可作为后续扩展。
+
+\subsection{无套利检查与持仓价值}
+公式应满足含连续股息的 Put-Call Parity：
+\begin{equation}
+C-P=Se^{-qT}-Ke^{-rT}.
+\end{equation}
+这一关系把看涨、看跌、标的与现金联系起来，是检查类型分支和贴现符号的有效手段。数量为 $Q$ 时，持仓价值为 $QV$；空头负价值仅表示该期权负债的当前标记价值，不是账户最终盈亏。
+\newpage
+
+\subsection{Greeks 的定义、公式与单位}
+Greeks 是保持其他参数不变时的局部偏导数。两类期权的 Delta 为
+\begin{equation}
+\Delta_C=e^{-qT}\Phi(d_1),\qquad
+\Delta_P=e^{-qT}[\Phi(d_1)-1].
+\end{equation}
+Delta 衡量标的价格变动一单位时的局部期权价值变化。若 $q\ge0$，看涨 Delta 位于 $[0,e^{-qT}]$，看跌 Delta 位于 $[-e^{-qT},0]$。在对应单位下，多头看涨对标的上升敏感，多头看跌对标的下降敏感。
+
+Gamma 和 Vega 对两类期权具有相同形式：
+\begin{align}
+\Gamma&=\frac{e^{-qT}\phi(d_1)}{S\sigma\sqrt T},\\
+\mathcal V&=\frac{\partial V}{\partial\sigma}=Se^{-qT}\phi(d_1)\sqrt T.
+\end{align}
+Gamma 是 Delta 对标的价格的导数，衡量价值曲线弯曲程度；在正常正参数下 Gamma 与 Vega 均为正。看涨和看跌收益的凸性意味着增加不确定性通常增加期权多头价值，但持仓 Vega 在空头数量下为负。
+
+Theta 按日历时间流逝定义，因此 $\Theta=-\partial V/\partial T$。注意这与剩余期限增加的偏导方向相反。年化公式为
+\begin{align}
+\Theta_C={}&-\frac{Se^{-qT}\phi(d_1)\sigma}{2\sqrt T}
+-rKe^{-rT}\Phi(d_2)+qSe^{-qT}\Phi(d_1),\\
+\Theta_P={}&-\frac{Se^{-qT}\phi(d_1)\sigma}{2\sqrt T}
++rKe^{-rT}\Phi(-d_2)-qSe^{-qT}\Phi(-d_1).
+\end{align}
+Rho 表示无风险利率小数变化对价格的局部影响：
+\begin{equation}
+\rho_C=KT e^{-rT}\Phi(d_2),\qquad
+\rho_P=-KT e^{-rT}\Phi(-d_2).
+\end{equation}
+
+\begin{table}[H]\centering\small
+\begin{tabularx}{\linewidth}{lXX}\toprule 指标 & 内部含义 & 网页主卡片口径\\\midrule
+Delta & $\partial V/\partial S$ & 货币 / 标的价格单位\\
+Gamma & $\partial^2 V/\partial S^2$ & Delta / 标的价格单位\\
+Vega & 波动率小数增加 1.00 的导数 & 原值 $\times0.01$，每 1 pp\\
+Theta & 时间流逝一年的导数 & 原值 $/365$，每个日历日\\
+Rho & 利率小数增加 1.00 的导数 & 原值 $\times0.01$，每 1 pp\\\bottomrule
+\end{tabularx}\caption{网页指标缩放规则；pp 表示百分点}
+\end{table}
+所有持仓敞口都乘以 $Q$。例如默认单份 Vega 每 1 pp 约为 0.3752，100 份持仓约为 37.5240。这里的 1 pp 表示从 20\% 到 21\%，不是 20\% 的相对增加 1\%。原始 Vega、Rho 和年化 Theta 可在网页展开查看。
+\newpage
+
+\subsection{蒙特卡洛估计与统计误差}
+对本项目的欧式收益，无需逐日模拟路径。直接对 GBM 的精确终值分布采样：
+\begin{equation}
+S_T^{(i)}=S\exp\left[(r-q-\tfrac12\sigma^2)T+\sigma\sqrt T Z_i\right],
+\quad Z_i\overset{\mathrm{iid}}\sim N(0,1).
+\end{equation}
+定义折现收益 $Y_i=e^{-rT}h(S_T^{(i)})$，其中 $h(x)=(x-K)^+$ 或 $(K-x)^+$。价格估计和无偏样本方差为
+\begin{align}
+\widehat V_N&=\frac1N\sum_{i=1}^NY_i,\\
+s_Y^2&=\frac1{N-1}\sum_{i=1}^N(Y_i-\widehat V_N)^2,\quad N>1.
+\end{align}
+标准误和基于中心极限定理的 95\% 近似区间分别为
+\begin{equation}
+\widehat{\mathrm{SE}}=\frac{s_Y}{\sqrt N},\qquad
+\left[\widehat V_N-1.96\widehat{\mathrm{SE}},\;
+\widehat V_N+1.96\widehat{\mathrm{SE}}\right].
+\end{equation}
+标准差描述单个折现收益的离散程度，标准误描述均值估计的不确定性，两者不能混用。折现因子已经包含在 $Y_i$ 中，因而均值和标准误不再重复贴现。正常近似区间可出现负下界，程序不人为截断，以保持明确的统计定义。
+
+固定种子 42 可以重复同一次实验，却不会消除误差。重复抽样下区间方法近似有 95\% 的覆盖率，并非对已观察的固定区间给定真实参数的后验概率。样本太少或深度虚值时，收益高度偏斜，区间可靠性下降。$N=1$ 无法计算样本方差；若全部收益为零，表面上的零标准误也不能证明真实价值为零。
+
+\subsection{局部敏感度与完整重定价压力测试}
+对较小冲击，局部展开具有解释作用：
+\begin{equation}
+\Delta V\approx\Delta\,\Delta S+\frac12\Gamma(\Delta S)^2
++\mathcal V\,\Delta\sigma.
+\end{equation}
+该表达式忽略更高阶项和交叉项，冲击变大时未必足够准确。系统实际使用
+\begin{equation}
+\mathrm{PnL}_{ij}=Q\left[V\!\left(S(1+a_i),K,T,r,\sigma+b_j,q\right)
+-V(S,K,T,r,\sigma,q)\right].\label{eq:stress}
+\end{equation}
+其中 $a_i$ 是标的相对冲击，$b_j$ 是波动率小数的绝对冲击。每个情景重算 $d_1,d_2$ 与完整价格，保留非线性作用。剩余期限固定，没有随情景经过一天；损益是当前估值变化，不是到期收益或历史损益。压力矩阵没有概率权重，不能直接解释为 VaR 或预期收益。
+\newpage
+
+\section{系统设计}
+\subsection{分层架构与数据流}
+系统采用简单的请求--响应结构。用户打开首页时以默认参数计算；提交表单时先检验数值，再调用模型。模型层不依赖 Flask，可以直接被测试和实验脚本使用。图表模块只读取数值结果，不承担金融逻辑。
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=7mm,
+ box/.style={draw=brand!55,fill=brand!4,rounded corners=3pt,minimum width=11cm,
+ minimum height=10mm,align=center,font=\small},arr/.style={-{Latex},brand,thick}]
+\node[box] (input) {用户输入：价格、期限、百分数、类型、数量、样本量};
+\node[box,below=of input] (flask) {Flask：解析表单、百分数转小数、合法性检查};
+\node[box,below=of flask] (models) {models：Black-Scholes / Greeks / Monte Carlo / Risk};
+\node[box,below=of models] (data) {结构化字典与 NumPy 数组：价格、统计量、情景矩阵};
+\node[box,below=of data] (plot) {charts.py：Python 构造 Plotly 图并序列化};
+\node[box,below=of plot] (view) {Jinja2 + HTML / CSS / JavaScript：卡片、交互图、表格};
+\draw[arr] (input)--(flask);\draw[arr] (flask)--(models);
+\draw[arr] (models)--(data);\draw[arr] (data)--(plot);\draw[arr] (plot)--(view);
+\end{tikzpicture}
+\caption{系统架构与参数流向}
+\end{figure}
+
+\subsection{文件职责与结果一致性}
+\code{black_scholes.py} 提供价格与 Greeks；两者共享参数检查与中间量。\code{monte_carlo.py} 返回价格、标准误、区间、终值数组和正收益样本数。\code{risk.py} 生成一维记录与二维矩阵。\code{app.py} 只负责网页边界、调用组合和显示口径。
+
+一次计算得到的基准价格用于误差、总价值和压力 PnL；二维矩阵的基准始终是原始市场参数。若错误地减去波动率冲击后的价格，会把矩阵每行中间位置变成零，丢失波动率风险。测试专门核对这一点。
+
+\subsection{网页与离线图表}
+界面由参数侧栏、定价卡片、Greeks、模拟分布、压力情景和模型说明组成。五幅图表支持悬停、缩放与导出。宽屏采用侧栏布局，窄屏把输入移至顶部，矩阵可以横向滚动。输入修改后提示用户重新计算，避免把旧结果误当作新参数结果。
+
+Plotly 运行库由 Python 包内置内容通过本地路由提供，不依赖 CDN。直方图预先在 Python 中分为 50 个箱，仅传输计数和区间，避免向页面传送全部 200,000 个样本。模型仍保留完整终值数组用于统计和验证。
+\newpage
+
+\section{系统实现与异常处理}
+\subsection{代表性计算逻辑}
+以下为核心实现的简化摘录，完整参数校验与类型提示位于源文件。定价统一使用符号变量减少 Call / Put 重复代码：
+\begin{lstlisting}[language=Python]
+sign = 1 if option_type == "call" else -1
+price = sign * (S * dq * norm.cdf(sign * d1)
+              - K * dr * norm.cdf(sign * d2))
+\end{lstlisting}
+其中 \code{dq=exp(-q*T)}，\code{dr=exp(-r*T)}。对正常输入公式非负，仅用零下限清除浮点消减可能产生的微小负数；没有用蒙特卡洛结果替代闭式价格。
+
+模拟使用局部随机生成器，不重设 NumPy 的全局状态：
+\begin{lstlisting}[language=Python]
+rng = np.random.default_rng(seed)
+z = rng.standard_normal(n_simulations)
+terminal = S * np.exp((r-q-0.5*sigma**2)*T
+                      + sigma*np.sqrt(T)*z)
+y = np.exp(-r*T) * np.maximum(sign*(terminal-K), 0)
+price = float(y.mean())
+se = float(y.std(ddof=1) / np.sqrt(n_simulations))
+\end{lstlisting}
+上段标准误计算只适用于 $N>1$；完整实现对 $N=1$ 返回空值。压力测试的关键是重新调用价格函数，而非只计算 Delta 近似：
+\begin{lstlisting}[language=Python]
+scenario_price = black_scholes_price(
+    S*(1+spot_shock), K, T, r, sigma+vol_shock,
+    q, option_type)
+pnl = quantity * (scenario_price - base_price)
+\end{lstlisting}
+
+\subsection{校验策略与数值边界}
+浏览器使用必填、数值类型和上下限提供即时反馈；后端仍独立校验，因为直接 HTTP 请求可以绕过前端。所有实数必须有限，拒绝 NaN、无穷和布尔伪数值。样本量与数量必须为整数，样本量最大 200,000，网页不接受科学计数法表示的整数计数。
+
+网页限定 $S,K\in[0.0001,10^6]$、$T\in[0.0001,30]$、$r\in[-20\%,100\%]$、$\sigma\in[0.01\%,300\%]$、$q\in[0,100\%]$。范围是课堂程序的稳定性保护，不代表市场参数的合理估计区间。模型 API 使用更宽的有限范围，并对模拟溢出给出明确错误。
+
+无效输入返回 HTTP 422 的中文页面，保留原输入供修改，同时隐藏旧结果；超长请求返回 413。波动率冲击后接近零或为负的行保留为空值，不悄悄改成其他波动率。BS 值接近零时相对误差显示 N/A，避免除零或夸大比率的解释意义。
+\newpage
+
+\section{实验与结果分析}
+\subsection{默认实验与实际输出}
+实验参数为 $S=100,K=100,T=1,r=0.05,\sigma=0.20,q=0$，期权为 Call，持仓 $Q=100$，模拟次数 $N=10,000$，随机种子为 42。所有下表来自 \code{scripts/generate_results.py}。运行环境版本记录在 \code{summary.json} 中，CSV 保留比界面更多的小数位。
+
+\begin{table}[H]\centering
+\input{generated_results/baseline_table.tex}
+\caption{默认参数的实际计算结果}
+\end{table}
+
+Monte Carlo 区间为 $[\MCLower,\MCUpper]$，BS 价格落在其中。两种方法的绝对误差为 \MCError，相对误差约为 \MCRelative\%。两者针对相同风险中性收益期望：闭式公式直接求值，模拟则用有限样本平均近似，因此有限样本下不会要求完全相等。
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}\begin{axis}[xlabel={到期标的价格},ylabel={样本数},ymin=0,
+ height=4.6cm,ybar,bar width=6pt]
+\addplot[fill=brand!70,draw=brand] table[x=terminal,y=count,col sep=comma]{generated_results/terminal_histogram.csv};
+\end{axis}\end{tikzpicture}
+\caption{10,000 次模拟的终值分布；报告用 40 箱，网页用 50 箱}
+\end{figure}
+分布右侧长尾反映对数正态特征。直方图统计的是标的终值，并非期权价格分布，也不是现实世界价格预测。箱数仅改变视觉粒度，不影响 MC 价格、标准误与置信区间。
+\newpage
+
+\subsection{模拟次数对精度的影响}
+保持种子 42 不变，分别模拟 1,000、5,000、10,000、50,000 次，结果如下。每次重建生成器，因此较小样本是较大样本的前缀，各行不是相互独立的重复实验。
+
+\begin{table}[H]\centering\small
+\input{generated_results/mc_table.tex}
+\caption{固定种子下的模拟次数比较}
+\end{table}
+
+从 1,000 增加到 50,000 次时，标准误从约 0.44835 降至 0.06614。这与 $O(N^{-1/2})$ 的趋势相符；样本量放大 50 倍，典型标准误约缩小为原来的 $1/\sqrt{50}$。如希望标准误减半，通常需要约四倍模拟量。运行成本大致随 $N$ 线性增加，终值数组的内存量也为 $O(N)$。
+
+本次种子下绝对误差逐次下降，但这是一个具体样本序列的结果，并非单调收敛定理。增加样本仍可能偶然拉大当次误差。尤其不能只选取最接近 BS 的一次结果，就宣称方法精度已经达到该差额。
+
+\subsection{独立种子的补充实验}
+为区别一次误差和典型误差，对种子 100--139 共 40 个不同生成器重复上述实验。每个 $N$ 统计均方根误差
+\[
+\mathrm{RMSE}=\sqrt{\frac1{40}\sum_{j=1}^{40}(\widehat V_N^{(j)}-V_{BS})^2},
+\]
+并记录平均标准误与区间覆盖次数。该扩展仅用于报告验证，不改变网页固定种子的行为。
+
+\begin{table}[H]\centering
+\input{generated_results/repeated_table.tex}
+\caption{40 个种子的重复实验；覆盖次数由实际结果统计}
+\end{table}
+
+重复实验呈现出总体下降的 RMSE，但有限的 40 次重复不足以让覆盖率恰好等于 95\%。例如 10,000 次组的覆盖为 34/40，即 85\%，50,000 次组为 40/40。这里如实保留波动，不能通过选择种子把统计表修饰为理想比例。平均标准误近似描述典型误差尺度，但不会逐组精确等于 RMSE。
+
+\subsection{复现规则}
+先运行测试，再执行实验脚本，最后编译报告。脚本重新生成价格、Greeks、压力 CSV、汇总 JSON、数值宏和表格，使报告中的显示精度统一。不同 NumPy、SciPy 或系统平台可能产生末位差异；项目记录版本用于追溯，而不把浮点最后一位当作金融结论。
+\newpage
+
+\section{风险情景分析}
+\subsection{标的价格冲击与非线性}
+标的价格相对冲击从 $-20\%$ 至 $+20\%$，间隔 5\%。保持 $K,T,r,\sigma,q$ 不变，对每个新 $S$ 重新估值。下表 PnL 已乘以 100 份持仓。
+
+\begin{table}[H]\centering
+\input{generated_results/spot_table.tex}
+\caption{标的价格完整重定价实验}
+\end{table}
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}\begin{axis}[xlabel={标的相对冲击},ylabel={持仓 PnL},
+ height=4.8cm,xtick={-.2,-.1,0,.1,.2},xticklabels={$-20\%$,$-10\%$,$0$,$10\%$,$20\%$}]
+\addplot[brand,thick,mark=*] table[x=shock,y=pnl,col sep=comma]{generated_results/spot_stress.csv};
+\end{axis}\end{tikzpicture}
+\caption{多头 Call 的压力损益曲线}
+\end{figure}
+
+默认看涨期权 Delta 为正，所以标的上涨对应价值上升。价格下跌 20\% 时持仓损益为 \SpotDown，上涨 20\% 时为 \SpotUp。两端绝对值不对称，反映看涨价值的凸性：上涨后 Delta 也上升，下跌后 Delta 下降。
+
+以正负 5\% 冲击为例，完整重定价损益分别约为 $+340.73$ 与 $-293.97$。只用当前 Delta 做一阶估计会得到对称的约 $\pm318.42$，无法反映这种差异。Gamma 二阶项可以改善小冲击近似，但大冲击仍以完整重定价为准。
+
+数量改变只线性缩放持仓结果。若改为 $Q=-100$，所有 PnL 符号反转，而单份期权价格与单份 Greeks 不变。若 $Q=0$，压力损益全部为零，定价仍正常计算。
+\newpage
+
+\subsection{波动率冲击与二维联合情景}
+波动率冲击为 $-10,-5,0,+5,+10$ 个百分点。默认波动率为 20\%，所以对应 10\%--30\% 的新波动率。该变化是绝对百分点，不是把原波动率乘以 $1\pm10\%$。
+
+\begin{table}[H]\centering
+\input{generated_results/vol_table.tex}
+\caption{波动率冲击的完整重定价实验}
+\end{table}
+
+多头欧式看涨和看跌在本模型下都有正 Vega。期权收益下方受零值限制，上方保留有利的价格变动，增加波动率会提升凸收益的期望。由 20\% 升至 30\% 时，默认 Call 的价格从约 10.4506 升至 14.2313。但空头持仓的价值变化方向相反，不能把“期权 Vega 为正”误解为所有头寸都受益。
+
+二维压力测试组合 9 个 Spot 冲击和 5 个波动率冲击，共 45 个情景。网页热图横轴为 Spot 相对冲击，纵轴为波动率百分点冲击；色标表示持仓 PnL，HTML 表格提供同一矩阵的具体数值。零冲击中心应为零，横向中心行应与一维 Spot 结果一致，纵向中心列应与一维波动率结果一致。
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}\begin{axis}[xlabel={标的价格冲击},ylabel={波动率冲击},
+ width=.78\linewidth,height=5.3cm,colorbar,view={0}{90},point meta min=-1900,point meta max=1900,
+ colormap={risk}{color(0cm)=(red!60!black);color(1cm)=(white);color(2cm)=(brand)},
+ xtick={-.2,-.1,0,.1,.2},xticklabels={$-20\%$,$-10\%$,$0$,$10\%$,$20\%$},
+ ytick={-.1,-.05,0,.05,.1},yticklabels={$-10\pp$,$-5\pp$,$0$,$+5\pp$,$+10\pp$}]
+\addplot[matrix plot*,mesh/cols=9,point meta=explicit] table[x=spot_shock,y=vol_shock,meta=pnl,col sep=comma]{generated_results/stress_grid.csv};
+\end{axis}\end{tikzpicture}
+\caption{程序生成的二维持仓 PnL；网页另有可悬停的交互版本}
+\end{figure}
+
+左下情景（标的 $-20\%$、波动率 $-10\pp$）为 \GridLow，右上情景为 \GridHigh。二者不能仅用两种一维冲击的损益相加得到，因为 Delta、Vega 等敏感度随市场状态变化。若基准波动率只有 5\%，向下 5 或 10 pp 将落入无效域；系统保留 N/A 而不制造价格。
+\newpage
+
+\section{测试与质量验证}
+\subsection{自动测试设计}
+测试避免仅复述实现步骤。价格测试使用独立的标准数值；平价关系同时约束 Call 和 Put 分支；Greeks 以价格函数的中心有限差分复核；模拟统计量从返回的终值独立重算；情景测试检查矩阵中心、截面以及负数量方向。
+
+\begin{table}[H]\centering\small
+\begin{tabularx}{\linewidth}{lX}\toprule 测试对象 & 检验内容\\\midrule
+BS 价格 & ATM Call 为 10.4505835722，Put 为 5.5735260223。\\
+平价与范围 & 多个 Spot、股息率及负利率组合；Delta 范围及正 Gamma。\\
+五项 Greeks & Call / Put 的中心差分；Theta 反号；pp 和每日缩放。\\
+MC 统计 & 与 BS 差异不超过合理标准误尺度，独立重算 SE 与区间。\\
+随机生成器 & 固定种子重复性；调用不扰动全局 NumPy 随机状态。\\
+风险矩阵 & 5 行 9 列；逐情景核对；空头、零持仓和无效波动率。\\
+Web 输入 & 缺失、非数字、NaN、无穷、超限与非法类型返回中文错误。\\
+页面输出 & 五幅图、中文字符、本地 Plotly 路由、Call / Put 提交。\\\bottomrule
+\end{tabularx}\caption{主要测试范围}
+\end{table}
+
+验收运行 \code{pytest} 的结果为 \textbf{96 passed}。MC 测试采用固定种子，并允许与 BS 的差异处于四个估计标准误以内；它不是要求模拟恰等于闭式值，也不是要求所有随机样本的 95\% 区间永远覆盖真值。Python 应用还通过真实浏览器检查，确认图表和中文矩阵实际渲染。
+
+\subsection{数值与软件验证的限度}
+单元测试证明选定输入与性质在当前实现下通过，不等于验证所有参数组合。很小的期限、极端虚值或极高波动率会造成尾部采样不足、相对误差不稳定或有限精度问题；网页提示与参数上限只能降低误用概率。原型未进行并发压测，也没有承诺商业服务的可用性。
+
+输入校验集中在边界层和共享模型工具，错误不会暴露 Python 堆栈。HTML 自动转义用户输入，图表内容来自项目内构造的数据。默认只绑定本地回环地址并关闭调试模式，服务的用途是本机演示。上述措施不代表项目已经具备对公网运营的认证、访问控制和审计能力。
+
+\subsection{课程演示建议}
+先展示默认价格及单位，再切换 Put 观察 Delta 和 Rho 的方向变化。随后增加样本量说明 SE 的变化，最后将数量改为负数解释单份价值与持仓风险的区别。输入低波动率可展示 N/A 情景的诚实处理；这种演示能同时覆盖金融理论、统计解释和工程边界。
+\newpage
+
+\section{模型局限性与适用边界}
+\begin{enumerate}[label=\arabic*.]
+\item \textbf{恒定波动率。}现实波动率随时间、执行价格和市场状态改变，本系统不校准随机波动率或波动率曲面；用单一输入 $\sigma$ 只能说明指定模型的结果。
+\item \textbf{连续交易。}理论复制组合允许连续调整，现实只能离散交易。Delta 在两次调整之间变化，会留下 Gamma 等风险。本项目计算敞口，没有实际执行动态对冲。
+\item \textbf{无交易摩擦。}佣金、买卖价差、冲击成本、融资限制和流动性没有进入价格。理论估值与可成交价格的差额不能直接当作套利机会。
+\item \textbf{常数利率与股息率。}未来期限结构及离散股息未被刻画。用一个年化利率和连续收益率简化现金流，可能不适合特定标的或长久期产品。
+\item \textbf{仅欧式行权。}美式期权的提前行权选择未建模。系统不能把相同参数的欧式价格直接标成美式期权公允价值。
+\item \textbf{没有波动率微笑。}同一输入波动率用于所有 Spot 情景，属于固定波动率假设。压力情景中单独修改 $\sigma$ 也不等于建立一致的波动率曲面动态。
+\item \textbf{没有真实市场期权链。}输入和示例都不来自实时校准，未验证市场报价拟合、交易日历、行权细则或交易所合约乘数。
+\item \textbf{MC 采样误差。}有限样本带来估计误差，深度虚值时尤其难以采到有收益的尾部样本。固定种子增强可复现性，但没有提升统计精度。
+\end{enumerate}
+
+此外，GBM 不包含价格跳跃，风险中性分布也不等于现实概率分布。给定的 45 个压力情景并不穷尽可能损失，热图最差值不是投资组合最大损失保证。若需要市场风险计量，应另行定义真实概率、风险期限、组合结构及估值体系。
+
+\section{结论与后续扩展}
+本项目完成了一个结构清晰、可离线运行的期权教学原型：用自行实现的 Black-Scholes 公式和 Greeks 建立定价基准，用可复现模拟显示统计误差，用完整重定价刻画非线性情景损益，并通过中文网页与 LaTeX 材料实现课程交付。统一百分数、时间和持仓单位，是把理论正确地落入软件的重要环节。
+
+后续可以分阶段增加隐含波动率反解和二叉树，与当前欧式价格交叉验证；再引入美式提前行权和真实期权链。更进一步的组合 VaR、Delta 对冲回测需要新的风险测度和交易假设，不宜简单附加到现有热图。当前版本保留边界清晰的功能集合，优先保证公式、统计解释与软件结果一致。
+\newpage
+
+\section*{复现与交付索引}
+\addcontentsline{toc}{section}{复现与交付索引}
+\subsection*{从源码重新得到实验结果}
+在项目根目录建立并激活虚拟环境，安装依赖后依次执行：
+\begin{lstlisting}[language=bash]
+python -m pip install -r requirements.txt
+pytest
+python scripts/generate_results.py
+python app.py
+\end{lstlisting}
+浏览器访问 \url{http://127.0.0.1:5000}。报告编译无需 Flask 正在运行；进入 \code{docs} 目录后，使用 XeLaTeX 两次编译以更新目录和交叉引用：
+\begin{lstlisting}[language=bash]
+xelatex report.tex
+xelatex report.tex
+xelatex user_manual.tex
+xelatex user_manual.tex
+\end{lstlisting}
+
+\subsection*{实验文件说明}
+\begin{table}[H]\centering\small
+\begin{tabularx}{\linewidth}{lX}\toprule 文件 & 内容\\\midrule
+\code{summary.json} & 默认价格、Greeks、MC 区间与运行版本。\\
+\code{mc_convergence.csv} & 固定种子下四种样本量的价格和误差。\\
+\code{mc_repeated_seeds.csv} & 40 个种子的 RMSE、平均 SE 和覆盖率。\\
+\code{greeks.csv} & 单份及 100 份持仓的原始和缩放 Greeks。\\
+\code{spot_stress.csv} & 相对标的冲击、场景价格和持仓 PnL。\\
+\code{volatility_stress.csv} & 波动率冲击、有效性、价值与 PnL。\\
+\code{stress_grid.csv} & 45 个联合情景的长表数据。\\
+\code{terminal_histogram.csv} & 报告分布图所需的箱中心与样本计数。\\
+\code{price_curve.csv} & 指定标的价格区间内的理论价格曲线。\\\bottomrule
+\end{tabularx}\caption{generated\_results 目录中的主要可复核数据}
+\end{table}
+
+\subsection*{交付组成与责任范围}
+项目包括 Python 应用、HTML/CSS/JavaScript、测试、示例参数、中文 README、两份 LaTeX 源码和编译后的 PDF。生成结果已经随项目提供，第一次编译不要求重新跑实验。再次修改模型后，应重新生成结果，避免报告与代码不一致。虚拟环境和临时编译文件无需打包提交。
+
+\begin{thebibliography}{9}
+\bibitem{haugh} Martin Haugh. \textit{The Black-Scholes Model}. IEOR E4706: Foundations of Financial Engineering, Columbia University, 2016.\\
+\url{https://www.columbia.edu/~mh2078/FoundationsFE/BlackScholes.pdf}
+\end{thebibliography}
+\end{document}

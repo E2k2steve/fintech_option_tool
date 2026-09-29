@@ -1,0 +1,237 @@
+\PassOptionsToClass{fontset=fandol}{ctexart}
+\documentclass[UTF8,a4paper,12pt]{ctexart}
+\input{preamble.tex}
+\input{generated_results/macros.tex}
+\hypersetup{pdftitle={期权定价与风险管理可视化系统使用说明}}
+\begin{document}
+\begin{center}
+{\small\color{brand}OPTION LAB / 快速上手与操作指南}\par\vspace{.5cm}
+{\LARGE\bfseries 期权定价与风险管理\\[.3em]可视化系统使用说明}\par\vspace{.4cm}
+{\small 本地运行：Python 3.10+ / 在线访问：浏览器即可}
+\end{center}
+
+\section{系统简介}
+本系统帮助你输入一组欧式期权参数，比较 Black-Scholes 理论价格和蒙特卡洛模拟结果，再观察持仓在标的价格、波动率变化下的风险。页面无需注册或真实行情，默认示例可以直接用于课堂演示。所有金额采用相同货币单位，系统没有固定为人民币或美元。
+
+已有公网地址的用户请直接阅读最后一页“在线访问方式”，无需安装 Python。以下本地步骤从 \code{fintech_option_tool} 文件夹开始；不需要修改源代码，也不需要先编译报告。
+
+\section{本地运行方式：环境要求}
+需要 Python 3.10 或更高版本、终端以及启用 JavaScript 的现代浏览器。安装依赖时需要网络；安装完成后，计算与交互图表可以离线使用。LaTeX 只用于生成文档 PDF，是可选的文档工具。
+
+可从 \url{https://www.python.org/downloads/} 获取与你系统对应的 Python。Windows 安装时勾选将 Python 加入 PATH 的选项；安装完成后重新打开终端。macOS 或 Linux 若使用 \code{python} 找不到命令，先尝试 \code{python3}。
+
+\begin{lstlisting}[language=bash]
+python --version
+# macOS / Linux alternative:
+python3 --version
+\end{lstlisting}
+确认输出版本至少为 3.10。如果提示找不到命令，应先完成 Python 安装或修复 PATH。不要通过双击 \code{app.py} 启动，因为窗口可能很快关闭，且难以观察错误。
+
+\section{创建虚拟环境}
+在终端中用 \code{cd} 进入项目文件夹。路径有空格时应加引号。例如先输入 \code{cd }，再将项目文件夹拖入终端即可得到路径。然后执行：
+\begin{lstlisting}[language=bash]
+python -m venv .venv
+\end{lstlisting}
+如果系统只有 \code{python3}，此处改为 \code{python3 -m venv .venv}。虚拟环境把本项目依赖与其他 Python 项目分开；每台新电脑都应自己创建，不要复制其他系统的 \code{.venv} 文件夹。
+
+\notebox{本系统仅用于课程教学与模型演示，不构成投资建议。示例参数是教学设定，页面结果不是实时市场报价。}
+\newpage
+
+\section{激活环境并安装依赖}
+Windows 的 CMD 窗口使用：
+\begin{lstlisting}
+.venv\Scripts\activate
+\end{lstlisting}
+Windows PowerShell 使用：
+\begin{lstlisting}
+.venv\Scripts\Activate.ps1
+\end{lstlisting}
+macOS / Linux 使用：
+\begin{lstlisting}[language=bash]
+source .venv/bin/activate
+\end{lstlisting}
+成功后命令行前面通常出现 \code{(.venv)}。接着安装依赖：
+\begin{lstlisting}[language=bash]
+python -m pip install -r requirements.txt
+\end{lstlisting}
+等待命令执行完毕。若 PowerShell 不允许激活脚本，可改用 CMD，或直接使用环境内的解释器，不需要更改系统安全策略：
+\begin{lstlisting}
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe app.py
+\end{lstlisting}
+
+\section{启动 Flask 与浏览器访问}
+在已激活环境的终端中执行：
+\begin{lstlisting}[language=bash]
+python app.py
+\end{lstlisting}
+看到服务运行提示后，在浏览器地址栏输入 \url{http://127.0.0.1:5000}。必须使用 \code{http}，并保留端口号。这个地址指向你自己的电脑，不是外部网站。终端应保持打开；停止服务请在终端按 \code{Ctrl+C}。
+
+首页自动计算默认 Call，不需要先点击按钮。左侧是输入参数，右侧依次是定价、Greeks、模拟和风险情景；窄屏下输入区会移到顶部。页面顶部的模块链接可以跳转到对应位置。
+
+如果端口 5000 已被使用，执行：
+\begin{lstlisting}[language=bash]
+python -m flask --app app run --host 127.0.0.1 --port 5001
+\end{lstlisting}
+然后访问 \url{http://127.0.0.1:5001}。下次使用时无需重复创建虚拟环境或安装依赖，只需进入目录、激活环境并启动服务。关闭服务后，已经打开的页面可能仍能查看旧图，但重新计算需要启动服务。
+\newpage
+
+\section{参数说明与输入规则}
+\begin{table}[H]\centering\small
+\begin{tabularx}{\linewidth}{lclX}\toprule 参数 & 默认 & 单位 & 输入说明\\\midrule
+标的价格 $S$ & 100 & 货币 & 当前标的价格，0.0001--1,000,000。\\
+执行价格 $K$ & 100 & 货币 & 合约执行价格，与 $S$ 同货币、同基础单位。\\
+到期时间 $T$ & 1 & 年 & 0.0001--30 年；半年输入 0.5。\\
+无风险利率 $r$ & 5 & \% & 年化连续复利，允许 $-20$ 至 100。\\
+波动率 $\sigma$ & 20 & \% & 年化波动率，允许 0.01 至 300。\\
+连续股息率 $q$ & 0 & \% & 年化连续股息收益率，允许 0 至 100。\\
+期权类型 & Call & -- & Call 为看涨，Put 为看跌。\\
+持仓数量 & 100 & 份 & 整数，正数多头、负数空头、零表示无持仓。\\
+模拟次数 & 10000 & 次 & 1--200,000 的整数；通常至少 1,000。\\\bottomrule
+\end{tabularx}\caption{网页参数；输入框旁的单位应一并阅读}
+\end{table}
+
+\subsection*{百分数、日期和数量的三个常见误区}
+第一，网页中输入 5 表示 5\%，不是输入 0.05。输入波动率 0.20 会被理解为 0.20\%，而不是 20\%。后端自动转换为小数，用户无需提前除以 100。
+
+第二，剩余期限用年。30 天可按 $30/365\approx0.082192$ 输入。本系统没有自动读取日期、交易日历或假期。Theta 也统一按 365 个日历日缩放，不按 252 个交易日。
+
+第三，数量按份计，合约乘数固定为 1。100 份表示把单份价值乘以 100；空头输入 $-100$。如果课堂案例规定一个合约含多份基础单位，应先换算总份数。数量绝对值最多 1,000,000，不能输入小数份。
+
+\section{修改参数与 Black-Scholes 定价}
+\begin{enumerate}
+\item 在输入区选择 Call 或 Put，填写价格、期限、百分数及数量。
+\item 点击“计算价格与风险”。更改输入后，旧结果不会自动更新，页面会给出修改提示。
+\item 查看绿色 Black-Scholes 卡片，它是单份理论价格；“总持仓价值”是该价格乘以数量。
+\item 下方价格曲线在其余参数不变时改变标的价格，虚线表示当前 $S$。曲线不代表未来走势。
+\item 需要重新开始时，点击“恢复默认示例”，恢复所有默认值和默认结果。
+\end{enumerate}
+默认 Call 单份价值应约为 \BSPrice；仅切换 Put 并重新计算时，应约为 5.573526。若与此相差明显，先检查波动率是否输入 20、利率是否输入 5，以及股息率是否为 0。
+\newpage
+
+\section{Monte Carlo 的使用方法}
+保留其他参数，选择或输入模拟次数，再点击计算。可以比较 1,000、5,000、10,000、50,000 次。页面使用固定种子 42，因此相同参数与样本量通常得到相同结果，便于课堂复现。
+
+定价卡片显示 MC 单份价格、相对 BS 的绝对误差和相对误差。Monte Carlo 模块显示标准误 SE、95\% 区间和正收益样本数。默认 10,000 次结果约为 \MCPrice，区间为 $[\MCLower,\MCUpper]$。更多样本通常让标准误下降，但不能保证每一次估计都更接近 BS。
+
+只有 1 次模拟时不能估计样本标准误，区间显示 N/A。小样本、深度虚值或全部样本收益为零时，应留意网页提示。不要把零标准误理解为投资风险为零。
+
+\section{Greeks 查看方法}
+五张卡片上方为单份指标，下方为按 quantity 缩放的持仓敞口。数值正负表示局部变化方向，不直接表示投资好坏。
+\begin{table}[H]\centering\small
+\begin{tabularx}{\linewidth}{lX}\toprule 指标 & 如何阅读\\\midrule
+Delta & 标的上涨 1 货币单位时，期权价值的一阶变化。\\
+Gamma & 标的上涨 1 单位时，Delta 的局部变化；描述非线性。\\
+Vega & 波动率上升 1 个百分点时，期权价值的局部变化。\\
+Theta & 时间流逝 1 个日历日时的局部价值变化，年化值除以 365。\\
+Rho & 年化无风险利率上升 1 个百分点时的局部价值变化。\\\bottomrule
+\end{tabularx}\caption{网页主卡片的单位定义}
+\end{table}
+例如默认持仓 Delta 约为 63.6831，表示标的小幅上涨 1 单位时，100 份持仓价值一阶增加约 63.6831。实际改变 $S$ 后重新计算会得到略有不同的结果，因为 Gamma 等非线性因素同时起作用。
+
+点击“查看单位定义与未缩放 Greeks”可以读取原始 Vega、Rho、年化 Theta 及对应持仓值。原始 Vega / Rho 是按小数变化 1.00 求导，而卡片按 0.01 缩放；20\% 到 21\% 是增加 1 个百分点，不是增加 1 倍波动率。
+
+\section{图表交互与分布解释}
+把鼠标放到曲线点、柱形或热图单元格上可以读取数据。图表右上工具栏提供放大、平移、自动缩放、恢复坐标和导出 PNG；缩放不会改变计算参数。要更改模型结果仍需修改表单并重新计算。
+
+分布直方图的横轴是模拟到期标的价格，纵轴是样本数，虚线标记执行价格。它不是期权收益分布，也不是现实世界预测。MC 的置信区间描述均值估计的采样误差，不能解释为持仓未来收益的 95\% 范围。
+\newpage
+
+\section{Stress Test 的使用方法}
+点击模块导航“压力测试”。系统以当前参数为基准，固定剩余期限，在每个新情景重新计算 Black-Scholes 价格，不需要用户再输入冲击列表。
+
+\begin{enumerate}
+\item \textbf{标的价格冲击：}查看从 $-20\%$ 到 $+20\%$ 的相对价格变化，每 5\% 一格。曲线纵轴是持仓 PnL，已考虑数量正负。
+\item \textbf{波动率冲击：}在当前波动率上分别减 10、减 5、加 0、加 5、加 10 个百分点；纵轴是单份期权价值。
+\item \textbf{二维压力：}热图横轴为标的冲击，纵轴为波动率冲击。绿色表示持仓盈利，红色表示亏损；数值与下方 HTML 矩阵相同。
+\end{enumerate}
+
+PnL 的定义为“数量 $\times$（情景单价 $-$ 当前单价）”。这是保持 $T$ 不变的当前估值变化，不是到期收益。观察二维表时，$\Delta S=0$、$\Delta\sigma=0$ 的中心为零；有一种冲击不为零时，PnL 通常不为零。
+
+\notebox{波动率冲击用百分点（pp）。例如 20\% 加 5 pp 得到 25\%；5\% 减 5 pp 会变为 0，属于本系统无效情景，显示 N/A、热图留空。程序不会悄悄把它改成其他波动率。}
+
+\section{示例操作：约五分钟演示}
+\subsection*{示例一：默认 Call 与 Put}
+恢复默认后，展示 BS 约 10.4506、MC 约 10.3452 和持仓价值约 1,045.06。向下查看五项 Greeks。再选择 Put，点击计算，BS 约为 5.5735。观察看跌 Delta 为负、Rho 为负，Gamma 和 Vega 保持正值。
+
+\subsection*{示例二：提高样本量}
+恢复默认，先输入 1,000 次计算，再改为 50,000 次计算。标准误由约 0.44835 降到 0.06614。本次固定种子的 MC 值由约 9.91198 变到 10.45769；这只是一个可复现的实验，不能推论所有种子都单调接近理论价。
+
+\subsection*{示例三：空头与二维风险}
+恢复默认，将数量改成 $-100$。单份 BS 价格不变，总价值和持仓 Greeks 变号。默认多头在标的上涨 20\% 时的 PnL 约为 $+1571.85$，空头相应为 $-1571.85$。再把数量改回 100、波动率改为 5，观察无效负向冲击显示 N/A。
+
+更多示例参数位于 \code{examples/scenarios.json}。文件用于查看和手工填写，本版本未提供文件上传导入功能。每次修改后记得点击计算，避免比较不同参数下的旧结果。
+\newpage
+
+\section{常见错误与处理}
+\begin{table}[H]\centering\small
+\begin{tabularx}{\linewidth}{p{4.1cm}X}\toprule 现象 & 处理方式\\\midrule
+找不到 python 命令 & 检查 Python 是否已安装；macOS / Linux 尝试 python3。\\
+提示缺少 Python 模块 & 激活项目虚拟环境，用同一个 Python 安装 requirements。\\
+无法打开本地网页 & 检查 Flask 终端是否仍在运行，确认 http、地址与端口一致。\\
+提示端口被占用 & 用第 5 节的 5001 启动命令，并同步修改浏览器地址。\\
+输入错误提示 & 检查是否空白、负价格、零期限、零波动率或小数模拟次数。\\
+图表空白 & 启用 JavaScript；刷新页面；检查本地 Plotly 路由可访问。\\
+热图有空白行 & 检查负向冲击是否使波动率不大于零；空白表示 N/A。\\
+改参数后结果未更新 & 点击“计算价格与风险”；输入本身不会自动重算。\\
+页面出现 N/A & 看说明：可能为无效情景、单样本 SE 或近零 BS 的相对误差。\\\bottomrule
+\end{tabularx}\caption{无需查看源代码的常见问题定位}
+\end{table}
+
+\section{FAQ 与模型边界}
+\textbf{为什么 BS 与 MC 不相等？}MC 使用有限样本；应结合标准误和区间判断差异，不应要求完全相等。
+
+\textbf{为什么同样参数每次 MC 都相同？}随机种子固定为 42，便于作业复现。改变样本量会改变估计，固定种子不消除采样误差。
+
+\textbf{能给美式期权或真实交易直接定价吗？}当前只支持欧式期权，不处理提前行权、市场波动率微笑、离散股息、交易费用和实际合约细则。页面没有实时行情。
+
+\textbf{负总价值是错误吗？}负数量表示空头，负总价值是所持期权负债的当前标记价值，不代表系统出错，也不等于从建仓以来的净盈亏。
+
+\section{测试、文档编译与提交}
+在项目根目录执行 \code{pytest} 检查程序，执行 \code{python scripts/generate_results.py} 更新实验数据。部署版也包含路径迁移、同源资源与健康检查测试，结果见验收记录。PDF 位于 \code{output/pdf}，可直接阅读。
+
+需要重新生成 PDF 时，安装包含中文组件的 TeX Live 或 MiKTeX，进入 \code{docs} 后依次运行 \code{xelatex report.tex} 两次、\code{xelatex user_manual.tex} 两次。使用 TeX 自带 Fandol 字体，无需安装自定义字体。编译需要同目录的 \code{preamble.tex} 与 \code{generated_results}。
+
+提交时保留源码、示例、测试、README、文档及实验数据；可以排除虚拟环境、缓存和临时文件。演示前检查首页能打开、Call / Put 都可计算、五幅图正常显示，并准备说明百分数和持仓单位。
+\newpage
+\section{在线访问方式（无需安装 Python）}
+从部署者取得 Render 控制台显示的公网 HTTPS 地址，形如
+\nolinkurl{https://your-service.onrender.com}。这只是格式示例，项目文件本身不会产生已上线的地址。使用电脑、平板或手机浏览器打开实际地址，启用 JavaScript 并保持网络连接即可；无需安装 Python、虚拟环境、依赖或 LaTeX，也无需注册应用账号。
+
+首页自动显示默认计算结果。修改参数、选择 Call / Put，再点击“计算价格与风险”，即可使用完整的 Black-Scholes、Monte Carlo、Greeks、三类 Stress Test、五幅图和二维表格。操作规则、百分数单位、持仓定义和错误提示与本地版一致。
+
+在线计算由 Render 服务器完成，不依赖开发者电脑继续运行。不要把 \code{127.0.0.1} 当成公网地址分享：该地址在每个访问者的设备上都指向其自身。Render 自动提供 HTTPS，应用不需要手工配置证书。免费实例闲置后可能休眠，首次访问需等待唤醒；演示前可提前打开页面。
+
+\section{Render 部署与环境设置（维护者）}
+将项目文件夹内的内容作为 Git 仓库根目录，提交 \code{render.yaml}、\code{.python-version}、\code{gunicorn.conf.py}、依赖文件、Python 模块、模板和静态资源。在 Render 选择 New / Blueprint，连接仓库并选取 \code{render.yaml}，确认 Free 实例后部署。
+
+也可选择 New / Web Service，使用 Python 运行时和以下配置：
+\begin{lstlisting}[language=bash]
+# Build Command
+python -m pip install -r requirements.txt
+# Start Command
+gunicorn --config gunicorn.conf.py \
+  --bind "0.0.0.0:${PORT:-10000}" app:app
+\end{lstlisting}
+健康检查路径填 \code{/healthz}。手动创建服务时填写以下环境变量；
+Blueprint 已包含这些值，\code{.env.example} 不会被自动读取。
+\begin{lstlisting}
+APP_ENV=production       PYTHONUNBUFFERED=1
+WEB_CONCURRENCY=1        GUNICORN_THREADS=2
+GUNICORN_TIMEOUT=120     OPENBLAS_NUM_THREADS=1
+OMP_NUM_THREADS=1
+\end{lstlisting}
+
+Python 版本由 \code{.python-version} 固定为 3.14.3；已有的
+\code{PYTHON_VERSION} 环境变量会优先，须避免冲突。\code{PORT} 由平台提供，
+Gunicorn 监听所有网卡；\code{python app.py} 仍按原样在本机 5000 端口运行。
+
+如果仓库保留外层目录，手动部署的 Root Directory 要填写
+\code{fintech_option_tool}；Blueprint 还需在服务内设置同名 \code{rootDir}。
+部署为 Live 后验证首页、Put 提交、五幅图及 \code{/healthz}，再复制实际 HTTPS
+地址给用户。服务不需要数据库、实验 CSV、本机绝对路径或 XeLaTeX。
+
+完整步骤、排错和环境表见 README。平台规则参见
+\url{https://render.com/docs/deploy-flask} 与
+\url{https://render.com/docs/free}。本次交付提供部署配置，实际公网服务需要在维护者的 Render 账号中创建。
+\end{document}

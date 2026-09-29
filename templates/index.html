@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>期权定价与风险管理系统</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="{{ url_for('plotly_bundle') }}"></script>
+  <script defer src="{{ url_for('static', filename='js/main.js') }}"></script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="{{ url_for('index') }}"><span class="brand-icon">∿</span> OPTION LAB <span class="brand-divider">/</span><span class="brand-sub">金融科技实验室</span></a><span class="status"><i></i> {{ '在线计算' if config.ONLINE_MODE else '本地计算' }} · 无需行情</span></header>
+<div class="page-heading"><div><div class="eyebrow">PRICING & RISK ANALYTICS</div><h1>期权定价与风险管理系统</h1><p>基于 Black-Scholes 模型与 Monte Carlo 模拟</p></div><span class="tag">欧式期权 · 课程演示</span></div>
+<main class="workspace">
+<aside class="sidebar panel" id="parameters">
+  <div class="panel-heading"><h2>参数输入</h2><span class="step">01</span></div>
+  <p class="muted small">设定一个情景，观察价格与风险。</p>
+  <form method="post" id="pricing-form" action="{{ url_for('index') }}">
+    <fieldset class="option-type"><legend>期权类型</legend>{% for value, text in [('call','Call 看涨'), ('put','Put 看跌')] %}<label><input type="radio" name="option_type" value="{{ value }}" {% if form.get('option_type') == value %}checked{% endif %} required><span>{{ text }}</span></label>{% endfor %}</fieldset>
+    <div class="input-grid">
+    {% for name, label, unit, low, high in [('S','标的价格 S','货币',0.0001,1000000),('K','执行价格 K','货币',0.0001,1000000),('T','到期时间 T','年',0.0001,30),('r','无风险利率 r','%',-20,100),('sigma','波动率 σ','%',0.01,300),('q','连续股息率 q','%',0,100)] %}
+    <label class="field" for="{{ name }}"><span>{{ label }}</span><span class="input-wrap"><input id="{{ name }}" name="{{ name }}" type="number" step="any" min="{{ low }}" max="{{ high }}" value="{{ form.get(name, '') }}" required><span class="unit">{{ unit }}</span></span></label>
+    {% endfor %}
+    </div>
+    <label class="field" for="quantity"><span>持仓数量</span><span class="input-wrap"><input id="quantity" name="quantity" type="number" min="-1000000" max="1000000" step="1" value="{{ form.get('quantity','') }}" required><span class="unit">份</span></span></label>
+    <p class="field-help">正数为多头，负数为空头；合约乘数为 1。</p>
+    <label class="field" for="n_simulations"><span>Monte Carlo 模拟次数</span><input id="n_simulations" name="n_simulations" type="number" list="simulation-options" min="1" max="200000" step="1" value="{{ form.get('n_simulations','') }}" required></label>
+    <datalist id="simulation-options"><option value="1000"><option value="5000"><option value="10000"><option value="50000"></datalist>
+    <p class="field-help">最多 200,000 次 · 固定随机种子 42</p>
+    <button type="submit" id="calculate-button">计算价格与风险 <span>↗</span></button>
+    <a class="reset-link" href="{{ url_for('index') }}">恢复默认示例</a>
+    <p id="dirty-notice" class="dirty-notice" hidden>参数已修改，点击计算更新结果。</p>
+    <noscript><p class="field-help">计算功能可使用；交互图表需要启用 JavaScript。</p></noscript>
+  </form>
+  <div class="sidebar-note"><span class="note-icon">i</span><p>百分数直接输入：5 表示 5%。<br>所有金额使用同一货币单位。</p></div>
+</aside>
+<div class="content">
+  {% if error %}<section class="error panel" role="alert"><h2>请检查输入参数</h2><p>{{ error }}</p><p>修改左侧参数后重新计算。</p></section>{% endif %}
+  {% if result %}{% set d = result %}
+  <nav class="section-nav" aria-label="分析模块"><a href="#pricing">定价概览</a><a href="#greeks">Greeks</a><a href="#monte-carlo">Monte Carlo</a><a href="#stress">压力测试</a><a href="#model">模型说明</a></nav>
+  <section id="pricing"><div class="section-heading"><h2>定价概览 <span>Pricing overview</span></h2><span class="tag">{{ 'Call 看涨' if d.params.option_type == 'call' else 'Put 看跌' }} · {{ d.quantity }} 份</span></div>
+    <div class="metrics">
+      <article class="metric primary"><div class="metric-label">Black-Scholes 价格 <span>BS</span></div><strong id="bs-price">{{ d.price|num }}</strong><p>单份期权理论价值</p></article>
+      <article class="metric"><div class="metric-label">Monte Carlo 价格 <span>MC</span></div><strong id="mc-price">{{ d.mc.price|num }}</strong><p>{{ d.n_simulations|num(0) }} 次风险中性模拟</p></article>
+      <article class="metric"><div class="metric-label">总持仓价值</div><strong>{{ d.portfolio_value|num(2) }}</strong><p>BS 价格 × {{ d.quantity }} 份</p></article>
+      <article class="metric"><div class="metric-label">MC 绝对误差</div><strong>{{ d.absolute_error|num }}</strong><p>相对误差 {{ (d.relative_error * 100)|num(2) ~ '%' if d.relative_error is not none else 'N/A（BS 接近零）' }}</p></article>
+    </div>
+    <div class="panel chart-panel"><div class="panel-heading"><h3>期权价格与标的价格</h3><span class="chart-label">OPTION PRICE / SPOT</span></div><p class="chart-description">其余参数保持不变，虚线标记当前标的价格。</p>{{ d.plots.price|safe }}</div>
+  </section>
+  <section id="greeks"><div class="section-heading"><h2>Greeks 风险敞口 <span>Local sensitivities</span></h2><span class="muted small">单份指标 / 持仓指标</span></div>
+    <div class="greeks-grid">{% for label,key,unit in d.greek_cards %}<article class="greek-card"><h3>{{ label }}</h3><strong>{{ d.greeks[key]|num(6 if key == 'gamma' else 4) }}</strong><p>{{ unit }}</p><div class="exposure"><span>持仓敞口</span><b>{{ (d.greeks[key] * d.quantity)|num }}</b></div></article>{% endfor %}</div>
+    <details class="units"><summary>查看单位定义与未缩放 Greeks</summary><p>Vega、Rho 卡片分别表示波动率、年化利率增加 1 个百分点时的局部价值变化；内部按小数变化 1.00 求导。单份原始 Vega = {{ d.greeks.vega|num }}，原始 Rho = {{ d.greeks.rho|num }}，对应持仓值为 {{ (d.greeks.vega * d.quantity)|num }}、{{ (d.greeks.rho * d.quantity)|num }}。</p><p>Theta 表示日历时间流逝，等于 −∂V/∂T；年化 Theta = {{ d.greeks.theta|num }}，日 Theta = 年化值 / 365；持仓年化 Theta = {{ (d.greeks.theta * d.quantity)|num }}。Delta 是 ∂V/∂S，Gamma 是 ∂²V/∂S²。所有持仓敞口均乘以 quantity。</p></details>
+  </section>
+  <section id="monte-carlo"><div class="section-heading"><h2>Monte Carlo 模拟 <span>Risk-neutral simulation</span></h2><span class="tag">SEED 42</span></div>
+    {% for warning in d.warnings %}<p class="warning" role="status">{{ warning }}</p>{% endfor %}
+    <div class="panel chart-panel"><div class="mc-summary"><div><span>标准误 SE</span><strong>{{ d.mc.standard_error|num(6) }}</strong></div><div><span>95% 置信区间（单份）</span><strong>{% if d.mc.confidence_interval %}[{{ d.mc.confidence_interval[0]|num }}, {{ d.mc.confidence_interval[1]|num }}]{% else %}N/A{% endif %}</strong></div><div><span>正收益样本</span><strong>{{ d.mc.positive_payoffs|num(0) }} / {{ d.n_simulations|num(0) }}</strong></div></div>
+      <div class="panel-heading"><h3>模拟到期价格分布</h3><span class="chart-label">TERMINAL DISTRIBUTION</span></div>{{ d.plots.histogram|safe }}<p class="chart-footnote">区间 = MC 价格 ± 1.96 × SE，基于样本标准差（ddof = 1）的正态近似。它衡量采样误差，不代表未来盈亏范围；终值分布属于风险中性测度。</p>
+    </div>
+  </section>
+  <section id="stress"><div class="section-heading"><h2>风险情景分析 <span>Full revaluation</span></h2><span class="tag">完整重定价</span></div><p class="section-description">保持到期时间不变，重新计算每个情景的 BS 价值。持仓 PnL = quantity ×（情景单价 − 当前单价）。</p>
+    <div class="two-charts"><article class="panel chart-panel"><h3>标的价格冲击与持仓 PnL</h3>{{ d.plots.spot|safe }}</article><article class="panel chart-panel"><h3>波动率与期权价值</h3>{{ d.plots.vol|safe }}</article></div>
+    <div class="panel chart-panel"><div class="panel-heading"><h3>Spot × Volatility 二维压力测试</h3><span class="legend"><i class="negative-dot"></i>亏损 <i class="positive-dot"></i>盈利</span></div>{{ d.plots.heatmap|safe }}
+      <div class="table-scroll"><table><caption>持仓 PnL 矩阵 · 行为波动率绝对冲击，列为标的价格相对冲击</caption><thead><tr><th scope="col">Δσ / ΔS</th>{% for s in d.stress.spot_shocks %}<th scope="col">{{ '%+.0f'|format(s*100) }}%</th>{% endfor %}</tr></thead><tbody>{% for row in d.stress.pnl %}<tr><th scope="row">{{ '%+.0f'|format(d.stress.vol_shocks[loop.index0]*100) }} pp</th>{% for v in row %}<td class="{{ 'positive' if v is not none and v > 0 else 'negative' if v is not none and v < 0 else '' }}">{{ v|num(2) }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div><p class="chart-footnote">pp = 百分点。例如 20% + 5 pp = 25%。波动率不大于 0 的情景为 N/A，热图显示为空白。</p>
+    </div>
+  </section>
+  {% endif %}
+  <section id="model" class="model-note"><div><div class="eyebrow">MODEL NOTES</div><h2>理解模型，也理解边界。</h2></div><div><p>本系统定价欧式期权，假设无交易摩擦、可连续交易、波动率与利率恒定，标的价格服从几何布朗运动。支持连续股息率，不处理提前行权与波动率微笑。</p><p>本系统仅用于课程教学与模型演示，不构成投资建议。</p></div></section>
+  <footer>OPTION LAB <span>Black-Scholes · Monte Carlo · Stress Testing</span><a href="#parameters">返回参数 ↑</a></footer>
+</div>
+</main>
+</body>
+</html>
